@@ -1,7 +1,9 @@
 .venv/
 voices/
+conversations/
 __pycache__/
 *.pyc
 *.pt
 *.wav
 .env
+settings.json
