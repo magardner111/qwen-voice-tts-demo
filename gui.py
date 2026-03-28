@@ -74,10 +74,10 @@ def _start_ollama() -> subprocess.Popen | None:
 
 # ── Chrome app launcher ───────────────────────────────────────────────────────
 
-def _open_chrome_app(url: str) -> None:
+def _open_chrome_app(url: str) -> subprocess.Popen:
     profile_dir = Path(tempfile.gettempdir()) / "voice-chat-chrome-profile"
     profile_dir.mkdir(exist_ok=True)
-    subprocess.Popen(
+    return subprocess.Popen(
         [
             CHROME,
             f"--app={url}",
@@ -120,11 +120,13 @@ if __name__ == "__main__":
         except Exception:
             time.sleep(0.5)
 
-    if not args.no_chrome_app:
-        _open_chrome_app(url)
-        print(f"[app] opened Chrome app at {url}")
+    _stop = threading.Event()
+    _shutting_down = threading.Event()
 
     def _shutdown(sig=None, frame=None):
+        if _shutting_down.is_set():
+            return
+        _shutting_down.set()
         print("\n[app] shutting down …")
         if ollama_proc is not None:
             print("[ollama] stopping …")
@@ -135,10 +137,21 @@ if __name__ == "__main__":
                 ollama_proc.kill()
         demo.close()
         print("[app] done")
-        raise SystemExit(0)
+        _stop.set()
 
     signal.signal(signal.SIGINT, _shutdown)
     signal.signal(signal.SIGTERM, _shutdown)
 
+    if not args.no_chrome_app:
+        chrome_proc = _open_chrome_app(url)
+        print(f"[app] opened Chrome app at {url}")
+
+        def _watch_chrome():
+            chrome_proc.wait()
+            print("[app] Chrome window closed")
+            _shutdown()
+
+        threading.Thread(target=_watch_chrome, daemon=True).start()
+
     print("[app] running — press Ctrl+C to quit")
-    threading.Event().wait()
+    _stop.wait()
